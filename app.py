@@ -2,7 +2,12 @@ import os
 import streamlit as st
 from deep_translator import GoogleTranslator
 from gtts import gTTS
-from moviepy.editor import ImageClip, AudioFileClip
+
+# MoviePy এর বিভিন্ন ভার্সনের জন্য সেইফ ইম্পোর্ট
+try:
+    from moviepy.editor import ImageClip, AudioFileClip
+except ImportError:
+    from moviepy import ImageClip, AudioFileClip
 
 # ১. পেজ সেটআপ
 st.set_page_config(page_title="AI Story Video Maker", page_icon="🎬", layout="centered")
@@ -15,7 +20,7 @@ user_story = st.text_area("আপনার গল্প এখানে লি�
 
 # ভাষা নির্বাচনের ড্রপডাউন
 language_option = st.selectbox(
-    "ভয়েস এবং অনুبودের ভাষা সিলেক্ট করুন:",
+    "ভয়েস এবং অনুবাদের ভাষা সিলেক্ট করুন:",
     ("বাংলা (Bengali)", "English", "हिन्दी (Hindi)")
 )
 
@@ -79,4 +84,5 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     
             except Exception as e:
                 st.error(f"একটি সমস্যা হয়েছে: {e}")
+                
               
