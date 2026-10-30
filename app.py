@@ -8,14 +8,14 @@ from gtts import gTTS
 
 # MoviePy এর বিভিন্ন ভার্সনের জন্য সেইফ ইম্পোর্ট
 try:
-    from moviepy.editor import ImageClip, AudioFileClip
+    from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 except ImportError:
-    from moviepy import ImageClip, AudioFileClip
+    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 
 st.set_page_config(page_title="AI Story Video Maker", page_icon="🎬", layout="centered")
 
 st.title("🎬 AI Story Video Maker")
-st.write("আপনার গল্প এবং ছবি দিয়ে সহজে ভিডিও তৈরি করুন!")
+st.write("আপনার গল্প এবং একাধিক ছবি দিয়ে সহজে ভিডিও তৈরি করুন!")
 
 user_story = st.text_area("আপনার গল্প এখানে লিখুন:", placeholder="এখানে গল্প লিখুন...")
 
@@ -31,29 +31,25 @@ lang_code_map = {
 }
 selected_lang_code = lang_code_map[language_option]
 
-# একাধিক ছবি আপলোড করার সুবিধা (Multiple File Uploader)
+# একাধিক ছবি আপলোড করার সুবিধা
 uploaded_images = st.file_uploader(
     "আপনার গল্পের ছবিগুলো আপলোড করুন (JPG/PNG):", 
     type=["jpg", "jpeg", "png"], 
     accept_multiple_files=True
 )
 
-# ছবিকে নির্দিষ্ট সাইজের (যেমন ১৯০ KB এর নিচে) আনার ফাংশন
+# ছবিকে স্বয়ংক্রিয়ভাবে ১৯০ KB এর নিচে নামিয়ে আনার ফাংশন
 def compress_image_to_target_size(image_file, target_size_kb=190):
     img = Image.open(image_file)
-    
-    # যদি ছবি অনেক বড় হয়, রেজোলিউশ একটু কমিয়ে নেওয়া ভালো
     img.thumbnail((1200, 1200))
     
     quality = 95
     output_io = BytesIO()
     
-    # লুপ চালিয়ে কোয়ালিটি কমিয়ে কাঙ্ক্ষিত সাইজে নিয়ে আসা
     while quality > 10:
         output_io.seek(0)
         output_io.truncate(0)
         
-        # RGB মোডে কনভার্ট করা (PNG বা অন্য ফরম্যাটের জন্য জরুরি)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
@@ -72,43 +68,61 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
     elif not uploaded_images:
         st.warning("দয়া করে অন্তত একটি ছবি আপলোড করুন!")
     else:
-        with st.spinner("এআই ভিডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন... প্রস্তুত করা হচ্ছে..."):
+        with st.spinner("এআই ভিডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
             try:
                 os.makedirs("temp_files", exist_ok=True)
                 
-                # প্রথম ছবি নিয়ে আপাতত কাজ শুরু করছি (একাধিক ছবি হলে পরবর্তীতে লুপ চালাতে পারবেন)
-                target_image = uploaded_images[0]
-                image_path = os.path.join("temp_files", "processed_image.jpg")
+                # ১. নিরাপদ অনুবাদ (Rate Limit এড়াতে বিরতি ও ট্রাই-এক্সসেপ্টসহ)
+                translated_text = ""
+                for attempt in range(3):
+                    try:
+                        time.sleep(1) # সার্ভারের উপর চাপ কমাতে বিরতি
+                        translated_text = GoogleTranslator(source='auto', target=selected_lang_code).translate(user_story)
+                        if translated_text:
+                            break
+                    except Exception:
+                        time.sleep(3)
                 
-                # স্বয়ংক্রিয়ভাবে ১৯০ KB এর নিচে কম্প্রেস করে সেভ করা
-                compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=190)
-                with open(image_path, "wb") as f:
-                    f.write(compressed_bytes)
+                if not translated_text:
+                    translated_text = user_story # অনুবাদ ব্যর্থ হলে মূল টেক্সট ব্যবহার করবে
                 
-                time.sleep(1)
-                
-                # অনুবাদ
-                try:
-                    translated_text = GoogleTranslator(source='auto', target=selected_lang_code).translate(user_story)
-                except Exception:
-                    time.sleep(2)
-                    translated_text = GoogleTranslator(source='auto', target=selected_lang_code).translate(user_story)
-                
-                # ভয়েস তৈরি
+                # ২. ভয়েস তৈরি
                 audio_path = os.path.join("temp_files", "voice.mp3")
                 tts = gTTS(text=translated_text, lang=selected_lang_code, slow=False)
                 tts.save(audio_path)
                 
-                # ভিডিও তৈরি
                 audio_clip = AudioFileClip(audio_path)
-                image_clip = ImageClip(image_path).set_duration(audio_clip.duration)
-                video_clip = image_clip.set_audio(audio_clip)
+                total_duration = audio_clip.duration
+                
+                # ৩. একাধিক ছবির জন্য ক্লিপ তৈরি (প্রতিটি ছবির সমান স্থায়িত্ব)
+                num_images = len(uploaded_images)
+                clip_duration = total_duration / num_images if num_images > 0 else total_duration
+                
+                image_clips = []
+                for i, target_image in enumerate(uploaded_images):
+                    image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
+                    
+                    # প্রতিটি ছবিকে স্বয়ংক্রিয়ভাবে ১৯০ KB এর নিচে কম্প্রেস করা
+                    compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=190)
+                    with open(image_path, "wb") as f:
+                        f.write(compressed_bytes)
+                    
+                    img_clip = ImageClip(image_path).set_duration(clip_duration)
+                    image_clips.append(img_clip)
+                
+                # ছবিগুলো একসাথে যুক্ত করা
+                if len(image_clips) > 1:
+                    final_image_clip = concatenate_videoclips(image_clips)
+                else:
+                    final_image_clip = image_clips[0]
+                
+                video_clip = final_image_clip.set_audio(audio_clip)
                 
                 output_video_path = os.path.join("temp_files", "final_story_video.mp4")
                 video_clip.write_videofile(output_video_path, fps=24, codec="libx264", audio_codec="aac")
                 
+                # মেমোরি রিলিজ করা
                 audio_clip.close()
-                image_clip.close()
                 video_clip.close()
                 
                 st.success("🎉 ভিডিও সফলভাবে তৈরি হয়েছে!")
@@ -125,5 +139,4 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
             except Exception as e:
                 st.error(f"একটি সমস্যা হয়েছে: {e}")
                 
-                
-              
+    
