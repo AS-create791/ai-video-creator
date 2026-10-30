@@ -107,7 +107,8 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
                     
-                    img_clip = ImageClip(image_path).set_duration(clip_duration)
+                    # MoviePy নতুন ভার্সন অনুযায়ী সরাসরি duration পাস করা হলো
+                    img_clip = ImageClip(image_path, duration=clip_duration)
                     image_clips.append(img_clip)
                 
                 # ছবিগুলো একসাথে যুক্ত করা
@@ -139,4 +140,3 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
             except Exception as e:
                 st.error(f"একটি সমস্যা হয়েছে: {e}")
                 
-    
