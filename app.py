@@ -94,7 +94,7 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
                 
-                # ৩. একাধিক ছবির জন্য ক্লিপ তৈরি (প্রতিটি ছবির সমান স্থায়িত্ব)
+                # ৩. একাধিক ছবির জন্য ক্লিপ তৈরি
                 num_images = len(uploaded_images)
                 clip_duration = total_duration / num_images if num_images > 0 else total_duration
                 
@@ -107,7 +107,6 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
                     
-                    # MoviePy নতুন ভার্সন অনুযায়ী সরাসরি duration পাস করা হলো
                     img_clip = ImageClip(image_path, duration=clip_duration)
                     image_clips.append(img_clip)
                 
@@ -117,7 +116,11 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 else:
                     final_image_clip = image_clips[0]
                 
-                video_clip = final_image_clip.set_audio(audio_clip)
+                # MoviePy নতুন ভার্সন অনুযায়ী with_audio ব্যবহার করা হলো
+                if hasattr(final_image_clip, "with_audio"):
+                    video_clip = final_image_clip.with_audio(audio_clip)
+                else:
+                    video_clip = final_image_clip.set_audio(audio_clip)
                 
                 output_video_path = os.path.join("temp_files", "final_story_video.mp4")
                 video_clip.write_videofile(output_video_path, fps=24, codec="libx264", audio_codec="aac")
@@ -139,4 +142,3 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     
             except Exception as e:
                 st.error(f"একটি সমস্যা হয়েছে: {e}")
-                
