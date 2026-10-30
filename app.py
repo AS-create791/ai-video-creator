@@ -32,11 +32,11 @@ lang_code_map = {
 }
 selected_lang_code = lang_code_map[language_option]
 
-# ভাষা অনুযায়ী ন্যাচারাল ভয়েস সিলেক্ট করা
+# ভাষা অনুযায়ী সবচেয়ে সুন্দর ও পরীক্ষিত ন্যাচারাল ভয়েস সিলেক্ট করা
 voice_map = {
-    "bn": "bn-BD-PradeepNeural",
-    "en": "en-US-AriaNeural",
-    "hi": "hi-IN-SwaraNeural"
+    "bn": "bn-BD-NabanitaNeural",  # মিষ্টি ও স্পষ্ট বাংলা নারী কন্ঠ
+    "en": "en-US-AriaNeural",     # জনপ্রিয় ইংরেজি নারী কন্ঠ
+    "hi": "hi-IN-SwaraNeural"     # মিষ্টি হিন্দি নারী কন্ঠ
 }
 selected_voice = voice_map[selected_lang_code]
 
@@ -100,11 +100,27 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 if not translated_text:
                     translated_text = user_story
                 
-                # ২. ন্যাচারাল ও মিষ্টি ভয়েস তৈরি (Edge-TTS)
+                # ২. ন্যাচারাল ও মিষ্টি ভয়েস তৈরি (Edge-TTS) - রট্রাই লজিক সহ
                 audio_path = os.path.join("temp_files", "voice.mp3")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(generate_edge_tts(translated_text, selected_voice, audio_path))
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+                
+                success_audio = False
+                for attempt in range(3):
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(generate_edge_tts(translated_text, selected_voice, audio_path))
+                        
+                        # ফাইল তৈরি হয়েছে কিনা এবং খালি নয় কিনা যাচাই করা
+                        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000:
+                            success_audio = True
+                            break
+                    except Exception:
+                        time.sleep(2)
+                
+                if not success_audio:
+                    raise Exception("অডিও তৈরি করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।")
                 
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
