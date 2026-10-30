@@ -32,11 +32,11 @@ lang_code_map = {
 }
 selected_lang_code = lang_code_map[language_option]
 
-# ভাষা অনুযায়ী আকর্ষণীয় ন্যাচারাল ভয়েস (প্রাকৃতিক কন্ঠস্বর) সিলেক্ট করা
+# ভাষা অনুযায়ী ন্যাচারাল ভয়েস সিলেক্ট করা
 voice_map = {
-    "bn": "bn-BD-PradeepNeural",  # বাংলায় খুব সুন্দর ও মিষ্টি পুরুষ কন্ঠ (অথবা নারী কন্ঠের জন্য 'bn-BD-NabanitaNeural' দিতে পারেন)
-    "en": "en-US-AriaNeural",     # ইংরেজিতে অত্যন্ত আকর্ষণীয় ও জনপ্রিয় নারী কন্ঠ
-    "hi": "hi-IN-SwaraNeural"     # হিন্দিতে মিষ্টি ও ন্যাচারাল কন্ঠ
+    "bn": "bn-BD-PradeepNeural",
+    "en": "en-US-AriaNeural",
+    "hi": "hi-IN-SwaraNeural"
 }
 selected_voice = voice_map[selected_lang_code]
 
@@ -115,7 +115,7 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 
                 image_clips = []
                 for i, target_image in enumerate(uploaded_images):
-                    image_path = os.path.join("temp_files", `processed_image_{i}.jpg`)
+                    image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
                     
                     compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=190)
                     with open(image_path, "wb") as f:
