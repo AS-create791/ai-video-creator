@@ -1,10 +1,11 @@
 import os
 import time
+import asyncio
 from io import BytesIO
 import streamlit as st
 from PIL import Image
 from deep_translator import GoogleTranslator
-from gtts import gTTS
+import edge_tts
 
 # MoviePy এর বিভিন্ন ভার্সনের জন্য সেইফ ইম্পোর্ট
 try:
@@ -15,7 +16,7 @@ except ImportError:
 st.set_page_config(page_title="AI Story Video Maker", page_icon="🎬", layout="centered")
 
 st.title("🎬 AI Story Video Maker")
-st.write("আপনার গল্প এবং একাধিক ছবি দিয়ে সহজে ভিডিও তৈরি করুন!")
+st.write("আপনার গল্প এবং একাধিক ছবি দিয়ে আকর্ষণীয় এআই ভয়েসসহ ভিডিও তৈরি করুন!")
 
 user_story = st.text_area("আপনার গল্প এখানে লিখুন:", placeholder="এখানে গল্প লিখুন...")
 
@@ -30,6 +31,14 @@ lang_code_map = {
     "हिन्दी (Hindi)": "hi"
 }
 selected_lang_code = lang_code_map[language_option]
+
+# ভাষা অনুযায়ী আকর্ষণীয় ন্যাচারাল ভয়েস (প্রাকৃতিক কন্ঠস্বর) সিলেক্ট করা
+voice_map = {
+    "bn": "bn-BD-PradeepNeural",  # বাংলায় খুব সুন্দর ও মিষ্টি পুরুষ কন্ঠ (অথবা নারী কন্ঠের জন্য 'bn-BD-NabanitaNeural' দিতে পারেন)
+    "en": "en-US-AriaNeural",     # ইংরেজিতে অত্যন্ত আকর্ষণীয় ও জনপ্রিয় নারী কন্ঠ
+    "hi": "hi-IN-SwaraNeural"     # হিন্দিতে মিষ্টি ও ন্যাচারাল কন্ঠ
+}
+selected_voice = voice_map[selected_lang_code]
 
 # একাধিক ছবি আপলোড করার সুবিধা
 uploaded_images = st.file_uploader(
@@ -62,21 +71,26 @@ def compress_image_to_target_size(image_file, target_size_kb=190):
         
     return output_io.getvalue()
 
+# এজ-টিটিএস দিয়ে ন্যাচারাল ভয়েস তৈরির অ্যাসিনক্রোনাস ফাংশন
+async def generate_edge_tts(text, voice, output_path):
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(output_path)
+
 if st.button("🎥 ভিডিও জেনারেট করুন"):
     if not user_story.strip():
         st.warning("দয়া করে কিছু গল্প লিখুন!")
     elif not uploaded_images:
         st.warning("দয়া করে অন্তত একটি ছবি আপলোড করুন!")
     else:
-        with st.spinner("এআই ভিডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
+        with st.spinner("আকর্ষণীয় এআই ভয়েস ও ভিডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
             try:
                 os.makedirs("temp_files", exist_ok=True)
                 
-                # ১. নিরাপদ অনুবাদ (Rate Limit এড়াতে বিরতি ও ট্রাই-এক্সসেপ্টসহ)
+                # ১. নিরাপদ অনুবাদ
                 translated_text = ""
                 for attempt in range(3):
                     try:
-                        time.sleep(1) # সার্ভারের উপর চাপ কমাতে বিরতি
+                        time.sleep(1)
                         translated_text = GoogleTranslator(source='auto', target=selected_lang_code).translate(user_story)
                         if translated_text:
                             break
@@ -84,12 +98,13 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                         time.sleep(3)
                 
                 if not translated_text:
-                    translated_text = user_story # অনুবাদ ব্যর্থ হলে মূল টেক্সট ব্যবহার করবে
+                    translated_text = user_story
                 
-                # ২. ভয়েস তৈরি
+                # ২. ন্যাচারাল ও মিষ্টি ভয়েস তৈরি (Edge-TTS)
                 audio_path = os.path.join("temp_files", "voice.mp3")
-                tts = gTTS(text=translated_text, lang=selected_lang_code, slow=False)
-                tts.save(audio_path)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(generate_edge_tts(translated_text, selected_voice, audio_path))
                 
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
@@ -100,9 +115,8 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 
                 image_clips = []
                 for i, target_image in enumerate(uploaded_images):
-                    image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
+                    image_path = os.path.join("temp_files", `processed_image_{i}.jpg`)
                     
-                    # প্রতিটি ছবিকে স্বয়ংক্রিয়ভাবে ১৯০ KB এর নিচে কম্প্রেস করা
                     compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=190)
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
@@ -110,13 +124,11 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     img_clip = ImageClip(image_path, duration=clip_duration)
                     image_clips.append(img_clip)
                 
-                # ছবিগুলো একসাথে যুক্ত করা
                 if len(image_clips) > 1:
                     final_image_clip = concatenate_videoclips(image_clips)
                 else:
                     final_image_clip = image_clips[0]
                 
-                # MoviePy নতুন ভার্সন অনুযায়ী with_audio ব্যবহার করা হলো
                 if hasattr(final_image_clip, "with_audio"):
                     video_clip = final_image_clip.with_audio(audio_clip)
                 else:
@@ -125,11 +137,10 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 output_video_path = os.path.join("temp_files", "final_story_video.mp4")
                 video_clip.write_videofile(output_video_path, fps=24, codec="libx264", audio_codec="aac")
                 
-                # মেমোরি রিলিজ করা
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 ভিডিও সফলভাবে তৈরি হয়েছে!")
+                st.success("🎉 আকর্ষণীয় ভয়েসসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
