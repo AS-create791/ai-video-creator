@@ -2,4 +2,7 @@ streamlit
 deep-translator
 gtts
 moviepy
+Pillow
+edge-tts
+
 
