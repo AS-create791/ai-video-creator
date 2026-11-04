@@ -1,20 +1,46 @@
 
 import os
 import time
-import asyncio
 import streamlit as st
 from deep_translator import GoogleTranslator
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from gtts import gTTS
+from PIL import Image
+import io
 
 st.set_page_config(page_title="AI Story Video Generator", page_icon="🎬", layout="centered")
 
-st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইলসহ)")
+st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইল ও ৫০০ কেবি)")
 st.write("আপনার গল্প, ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
+
+# ছবি নির্দিষ্ট সাইজে (৫০০ KB) কম্প্রেস করার ফাংশন
+def compress_image_to_target_size(uploaded_file, target_size_kb=500):
+    img = Image.open(uploaded_file)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    
+    quality = 95
+    while quality > 10:
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality)
+        size_kb = buffer.tell() / 1024
+        if size_kb <= target_size_kb or quality <= 15:
+            break
+        quality -= 5
+    buffer.seek(0)
+    return buffer.read()
 
 # ইনপুট সেকশন
 user_story = st.text_area("আপনার গল্প বা টেক্সট এখানে লিখুন:", height=150)
-selected_lang_code = st.selectbox("ভাষার কোড সিলেক্ট করুন (যেমন: bn, en):", ["bn", "en", "hi"])
-selected_voice = st.selectbox("ভয়েস সিলেক্ট করুন:", ["bn-BD-PradeepNeural", "bn-BD-NabanitaNeural"])
+
+# ১. ভাষা সিলেক্ট করার অপশন (বাংলা, ইংরেজি, হিন্দি)
+language_options = {
+    "বাংলা (Bengali)": "bn",
+    "English (ইংরেজি)": "en",
+    "हिन्दी (Hindi)": "hi"
+}
+selected_lang_name = st.selectbox("ভাষার কোড সিলেক্ট করুন:", list(language_options.keys()))
+selected_lang_code = language_options[selected_lang_name]
 
 # একাধিক ছবি আপলোড অপশন
 uploaded_images = st.file_uploader(
@@ -54,17 +80,19 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 if not translated_text:
                     translated_text = user_story
                 
-                # ২. ন্যাচারাল ও মিষ্টি ভয়েস তৈরি (Edge-TTS)
+                # ২. gTTS দিয়ে একদম নিশ্চিত ও সহজ উপায়ে অডিও তৈরি
                 audio_path = os.path.join("temp_files", "voice.mp3")
                 if os.path.exists(audio_path):
-                    os.remove(audio_path)
+                    try:
+                        os.remove(audio_path)
+                    except:
+                        pass
                 
                 success_audio = False
                 for attempt in range(3):
                     try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        loop.run_until_complete(generate_edge_tts(translated_text, selected_voice, audio_path))
+                        tts = gTTS(text=translated_text, lang=selected_lang_code, slow=False)
+                        tts.save(audio_path)
                         
                         if os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000:
                             success_audio = True
@@ -73,19 +101,18 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                         time.sleep(2)
                 
                 if not success_audio:
-                    raise Exception("অডিও তৈরি করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।")
+                    raise Exception("অডিও তৈরি করতে সমস্যা হয়েছে। দয়া করে ইন্টারনেট কানেকশন চেক করুন।")
                 
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
                 
-                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (এখানে টার্গেট সাইজ ৩০০ KB করা হয়েছে)
+                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (টার্গেট সাইজ ৫০০ KB)
                 image_clips = []
                 
                 thumbnail_duration = 1.5  
                 if thumbnail_file is not None:
                     thumb_path = os.path.join("temp_files", "thumbnail_image.jpg")
-                    # থাম্বনেইলের সাইজ ৩০০ KB করা হলো
-                    compressed_thumb_bytes = compress_image_to_target_size(thumbnail_file, target_size_kb=300)
+                    compressed_thumb_bytes = compress_image_to_target_size(thumbnail_file, target_size_kb=500)
                     with open(thumb_path, "wb") as f:
                         f.write(compressed_thumb_bytes)
                     
@@ -99,8 +126,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 for i, target_image in enumerate(uploaded_images):
                     image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
                     
-                    # মূল ছবিগুলোর সাইজ 500 KB করা হলো
-                    compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=300)
+                    compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=500)
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
                     
@@ -123,7 +149,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 ৩০০ কেবি সাইজ এবং থাম্বনেইলসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
+                st.success("🎉 ৫০০ কেবি সাইজ, থাম্বনেইল এবং অডিওসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
