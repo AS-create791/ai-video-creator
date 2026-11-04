@@ -1,91 +1,48 @@
 import os
 import time
 import asyncio
-from io import BytesIO
 import streamlit as st
-from PIL import Image
 from deep_translator import GoogleTranslator
-import edge_tts
+from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
-# MoviePy এর বিভিন্ন ভার্সনের জন্য সেইফ ইম্পোর্ট
-try:
-    from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
-except ImportError:
-    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+# (উল্লেখ্য: তোমার প্রোজেক্টে generate_edge_tts এবং compress_image_to_target_size 
+# ফাংশনগুলো যেভাবে ডিফাইন করা আছে, সেগুলো প্রজেক্টের অন্য কোথাও ইম্পোর্ট বা ডিফাইন করা থাকতে হবে।)
 
-st.set_page_config(page_title="AI Story Video Maker", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="AI Story Video Generator", page_icon="🎬", layout="centered")
 
-st.title("🎬 AI Story Video Maker")
-st.write("আপনার গল্প এবং একাধিক ছবি দিয়ে আকর্ষণীয় এআই ভয়েসসহ ভিডিও তৈরি করুন!")
+st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইলসহ)")
+st.write("আপনার গল্প, ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
 
-user_story = st.text_area("আপনার গল্প এখানে লিখুন:", placeholder="এখানে গল্প লিখুন...")
+# ইনপুট সেকশন
+user_story = st.text_area("আপনার গল্প বা টেক্সট এখানে লিখুন:", height=150)
+selected_lang_code = st.selectbox("ভাষার কোড সিলেক্ট করুন (যেমন: bn, en):", ["bn", "en", "hi"])
+selected_voice = st.selectbox("ভয়েস সিলেক্ট করুন:", ["bn-BD-PradeepNeural", "bn-BD-NabanitaNeural"])
 
-language_option = st.selectbox(
-    "ভয়েস এবং অনুবাদের ভাষা সিলেক্ট করুন:",
-    ("বাংলা (Bengali)", "English", "हिन्दी (Hindi)")
-)
-
-lang_code_map = {
-    "বাংলা (Bengali)": "bn",
-    "English": "en",
-    "हिन्दी (Hindi)": "hi"
-}
-selected_lang_code = lang_code_map[language_option]
-
-# ভাষা অনুযায়ী সবচেয়ে সুন্দর ও পরীক্ষিত ন্যাচারাল ভয়েস সিলেক্ট করা
-voice_map = {
-    "bn": "bn-BD-NabanitaNeural",  # মিষ্টি ও স্পষ্ট বাংলা নারী কন্ঠ
-    "en": "en-US-AriaNeural",     # জনপ্রিয় ইংরেজি নারী কন্ঠ
-    "hi": "hi-IN-SwaraNeural"     # মিষ্টি হিন্দি নারী কন্ঠ
-}
-selected_voice = voice_map[selected_lang_code]
-
-# একাধিক ছবি আপলোড করার সুবিধা
+# একাধিক ছবি আপলোড অপশন
 uploaded_images = st.file_uploader(
-    "আপনার গল্পের ছবিগুলো আপলোড করুন (JPG/PNG):", 
-    type=["jpg", "jpeg", "png"], 
+    "ভিডিওর মূল ছবিগুলো আপলোড করুন (একাধিক ছবি)", 
+    type=["jpg", "png", "jpeg"], 
     accept_multiple_files=True
 )
 
-# ছবিকে স্বয়ংক্রিয়ভাবে ১৯০ KB এর নিচে নামিয়ে আনার ফাংশন
-def compress_image_to_target_size(image_file, target_size_kb=190):
-    img = Image.open(image_file)
-    img.thumbnail((1200, 1200))
-    
-    quality = 95
-    output_io = BytesIO()
-    
-    while quality > 10:
-        output_io.seek(0)
-        output_io.truncate(0)
-        
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-            
-        img.save(output_io, format="JPEG", quality=quality)
-        size_kb = output_io.tell() / 1024
-        
-        if size_kb <= target_size_kb:
-            break
-        quality -= 5
-        
-    return output_io.getvalue()
+# থাম্বনেইল আপলোড অপশন
+thumbnail_file = st.file_uploader(
+    "ভিডিওর জন্য কাস্টম থাম্বনেইল (Thumbnail) আপলোড করুন", 
+    type=["jpg", "png", "jpeg"]
+)
 
-# এজ-টিটিএস দিয়ে ন্যাচারাল ভয়েস তৈরির অ্যাসিনক্রোনাস ফাংশন
-async def generate_edge_tts(text, voice, output_path):
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(output_path)
-
-if st.button("🎥 ভিডিও জেনারেট করুন"):
+if st.button("🚀 ভিডিও তৈরি করুন"):
     if not user_story.strip():
-        st.warning("দয়া করে কিছু গল্প লিখুন!")
+        st.warning("দয়া করে কিছু টেক্সট বা গল্প লিখুন।")
     elif not uploaded_images:
-        st.warning("দয়া করে অন্তত একটি ছবি আপলোড করুন!")
+        st.warning("দয়া করে অন্তত একটি ছবি আপলোড করুন।")
     else:
-        with st.spinner("আকর্ষণীয় এআই ভয়েস ও ভিডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
+        # temp_files ফোল্ডার তৈরি নিশ্চিত করা
+        if not os.path.exists("temp_files"):
+            os.makedirs("temp_files")
+            
+        with st.spinner("ভিডিও তৈরি হচ্ছে, দয়া করে অপেক্ষা করুন..."):
             try:
-                os.makedirs("temp_files", exist_ok=True)
-                
                 # ১. নিরাপদ অনুবাদ
                 translated_text = ""
                 for attempt in range(3):
@@ -125,11 +82,25 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
                 
-                # ৩. একাধিক ছবির জন্য ক্লিপ তৈরি
-                num_images = len(uploaded_images)
-                clip_duration = total_duration / num_images if num_images > 0 else total_duration
-                
+                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি
                 image_clips = []
+                
+                # যদি ইউজার থাম্বনেইল আপলোড করে থাকে, তবে সেটি প্রথমে যুক্ত হবে (যেমন: ১.৫ সেকেন্ডের জন্য)
+                thumbnail_duration = 1.5  
+                if thumbnail_file is not None:
+                    thumb_path = os.path.join("temp_files", "thumbnail_image.jpg")
+                    compressed_thumb_bytes = compress_image_to_target_size(thumbnail_file, target_size_kb=190)
+                    with open(thumb_path, "wb") as f:
+                        f.write(compressed_thumb_bytes)
+                    
+                    thumb_clip = ImageClip(thumb_path, duration=thumbnail_duration)
+                    image_clips.append(thumb_clip)
+                
+                # বাকি ছবিগুলোর জন্য সময় হিসাব করা
+                remaining_duration = max(0, total_duration - thumbnail_duration) if thumbnail_file is not None else total_duration
+                num_images = len(uploaded_images)
+                clip_duration = remaining_duration / num_images if num_images > 0 else total_duration
+                
                 for i, target_image in enumerate(uploaded_images):
                     image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
                     
@@ -140,6 +111,7 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     img_clip = ImageClip(image_path, duration=clip_duration)
                     image_clips.append(img_clip)
                 
+                # সব ক্লিপ একসাথে কনক্যাটিনেট করা (থাম্বনেইল + মূল ছবিগুলো)
                 if len(image_clips) > 1:
                     final_image_clip = concatenate_videoclips(image_clips)
                 else:
@@ -156,7 +128,7 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 আকর্ষণীয় ভয়েসসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
+                st.success("🎉 থাম্বনেইলসহ আকর্ষণীয় ভয়েস ভিডিও সফলভাবে তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
@@ -169,3 +141,4 @@ if st.button("🎥 ভিডিও জেনারেট করুন"):
                     
             except Exception as e:
                 st.error(f"একটি সমস্যা হয়েছে: {e}")
+                
