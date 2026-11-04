@@ -1,4 +1,3 @@
-
 import os
 import time
 import asyncio
@@ -99,7 +98,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 for i, target_image in enumerate(uploaded_images):
                     image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
                     
-                    # মূল ছবিগুলোর সাইজ ৩০০ KB করা হলো
+                    # মূল ছবিগুলোর সাইজ 500 KB করা হলো
                     compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=300)
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
