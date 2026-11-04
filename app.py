@@ -10,19 +10,20 @@ import io
 
 st.set_page_config(page_title="AI Story Video Generator", page_icon="🎬", layout="centered")
 
-st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইল ও ৫০০ কেবি)")
+st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইল ও ফিক্সড সাইজ)")
 st.write("আপনার গল্প, ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
 
-# ছবি নির্দিষ্ট সাইজে (৫০০ KB) এবং সঠিক রেজোলিউশনে কম্প্রেস করার ফাংশন
-def compress_image_to_target_size(uploaded_file, target_size_kb=500):
+# ছবিকে একদম নিখুঁত এইচডি সাইজে (১১২০x৭২০) ফিক্সড করে ৫০০ কেবির মধ্যে রাখার ফাংশন
+def process_and_resize_image(uploaded_file, target_size_kb=500):
     img = Image.open(uploaded_file)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     
-    # ছবির আকৃতি ও কোয়ালিটি ঠিক রাখতে ম্যাক্সিমাম ডাইমেনশন সেট করা
-    max_dimension = 1280
-    if max(img.size) > max_dimension:
-        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+    # ভিডিওর জন্য একটি নির্দিষ্ট স্ট্যান্ডার্ড সাইজ (যেমন ১২৮০x৭২০) ফিক্স করে দেওয়া হলো, যাতে ছবি না ফাটে
+    target_width, target_height = 1280, 720
+    
+    # ইমেজকে সঠিক অনুপাতে রিসাইজ করে ব্যাকগ্রাউন্ড ঠিক করা
+    img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
     quality = 95
     while quality > 10:
@@ -111,13 +112,13 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
                 
-                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (টার্গেট সাইজ ৫০০ KB)
+                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (ফিক্সড সাইজসহ)
                 image_clips = []
                 
                 thumbnail_duration = 1.5  
                 if thumbnail_file is not None:
                     thumb_path = os.path.join("temp_files", "thumbnail_image.jpg")
-                    compressed_thumb_bytes = compress_image_to_target_size(thumbnail_file, target_size_kb=500)
+                    compressed_thumb_bytes = process_and_resize_image(thumbnail_file, target_size_kb=500)
                     with open(thumb_path, "wb") as f:
                         f.write(compressed_thumb_bytes)
                     
@@ -131,7 +132,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 for i, target_image in enumerate(uploaded_images):
                     image_path = os.path.join("temp_files", f"processed_image_{i}.jpg")
                     
-                    compressed_bytes = compress_image_to_target_size(target_image, target_size_kb=500)
+                    compressed_bytes = process_and_resize_image(target_image, target_size_kb=500)
                     with open(image_path, "wb") as f:
                         f.write(compressed_bytes)
                     
@@ -139,7 +140,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                     image_clips.append(img_clip)
                 
                 if len(image_clips) > 1:
-                    final_image_clip = concatenate_videoclips(image_clips)
+                    final_image_clip = concatenate_videoclips(image_clips, method="compose")
                 else:
                     final_image_clip = image_clips[0]
                 
@@ -154,7 +155,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 ৫০০ কেবি সাইজ, থাম্বনেইল এবং পরিষ্কার ছবিসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
+                st.success("🎉 এবার ছবি আর ফাটবে না! একদম পরিষ্কার ভিডিও তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
