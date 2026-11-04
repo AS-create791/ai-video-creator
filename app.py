@@ -13,12 +13,17 @@ st.set_page_config(page_title="AI Story Video Generator", page_icon="🎬", layo
 st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইল ও ৫০০ কেবি)")
 st.write("আপনার গল্প, ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
 
-# ছবি নির্দিষ্ট সাইজে (৫০০ KB) কম্প্রেস করার ফাংশন
+# ছবি নির্দিষ্ট সাইজে (৫০০ KB) এবং সঠিক রেজোলিউশনে কম্প্রেস করার ফাংশন
 def compress_image_to_target_size(uploaded_file, target_size_kb=500):
     img = Image.open(uploaded_file)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     
+    # ছবির আকৃতি ও কোয়ালিটি ঠিক রাখতে ম্যাক্সিমাম ডাইমেনশন সেট করা
+    max_dimension = 1280
+    if max(img.size) > max_dimension:
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
     quality = 95
     while quality > 10:
         buffer = io.BytesIO()
@@ -80,7 +85,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 if not translated_text:
                     translated_text = user_story
                 
-                # ২. gTTS দিয়ে একদম নিশ্চিত ও সহজ উপায়ে অডিও তৈরি
+                # ২. gTTS দিয়ে অডিও তৈরি
                 audio_path = os.path.join("temp_files", "voice.mp3")
                 if os.path.exists(audio_path):
                     try:
@@ -149,7 +154,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 ৫০০ কেবি সাইজ, থাম্বনেইল এবং অডিওসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
+                st.success("🎉 ৫০০ কেবি সাইজ, থাম্বনেইল এবং পরিষ্কার ছবিসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
