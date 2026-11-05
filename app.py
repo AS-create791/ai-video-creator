@@ -1,28 +1,25 @@
-
 import os
 import time
+import asyncio
 import streamlit as st
 from deep_translator import GoogleTranslator
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
-from gtts import gTTS
+import edge_tts
 from PIL import Image
 import io
 
 st.set_page_config(page_title="AI Story Video Generator", page_icon="🎬", layout="centered")
 
-st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (থাম্বনেইল ও ফিক্সড সাইজ)")
-st.write("আপনার গল্প, ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
+st.title("🎬 এআই স্টোরি ভিডিও জেনারেটর (ন্যাচারাল মেল ভয়েস ও ফিক্সড সাইজ)")
+st.write("আপনার গল্প, ২৮-৩০ বছরের যুবকের আকর্ষণীয় মেল ভয়েস, ছবি এবং থাম্বনেইল দিয়ে সুন্দর ভিডিও তৈরি করুন।")
 
-# ছবিকে একদম নিখুঁত এইচডি সাইজে (১১২০x৭২০) ফিক্সড করে ৫০০ কেবির মধ্যে রাখার ফাংশন
+# ছবিকে একদম নিখুঁত এইচডি সাইজে (১২৮০x৭২০) ফিক্সড করে ৫০০ কেবির মধ্যে রাখার ফাংশন
 def process_and_resize_image(uploaded_file, target_size_kb=500):
     img = Image.open(uploaded_file)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     
-    # ভিডিওর জন্য একটি নির্দিষ্ট স্ট্যান্ডার্ড সাইজ (যেমন ১২৮০x৭২০) ফিক্স করে দেওয়া হলো, যাতে ছবি না ফাটে
     target_width, target_height = 1280, 720
-    
-    # ইমেজকে সঠিক অনুপাতে রিসাইজ করে ব্যাকগ্রাউন্ড ঠিক করা
     img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
     quality = 95
@@ -47,6 +44,27 @@ language_options = {
 }
 selected_lang_name = st.selectbox("ভাষার কোড সিলেক্ট করুন:", list(language_options.keys()))
 selected_lang_code = language_options[selected_lang_name]
+
+# ২. ২৮-৩০ বছরের যুবকের ন্যাচারাল মেল ভয়েস সিলেক্ট করার লজিক (Edge-TTS প্রফেশনাল পুরুষ কণ্ঠ)
+if selected_lang_code == "bn":
+    # প্রদীপ (PradeepNeural) হলো একটি চমৎকার গম্ভীর ও পরিপক্ব যুবকের কণ্ঠ
+    voice_options = {
+        "ছেলের গম্ভীর ও মিষ্টি কণ্ঠ (PradeepNeural - বয়স ২৮-৩০)": "bn-BD-PradeepNeural"
+    }
+elif selected_lang_code == "en":
+    # ব্রায়ান বা রায়ান হলো অত্যন্ত প্রফেশনাল মেল ভয়েস
+    voice_options = {
+        "প্রফেশনাল যুবকের কণ্ঠ (BrianNeural)": "en-US-BrianNeural",
+        "আকর্ষণীয় পুরুষের কণ্ঠ (RyanNeural)": "en-US-RyanNeural"
+    }
+else:  # Hindi
+    # মধুর হলো চমৎকার যুবকের কণ্ঠ
+    voice_options = {
+        "যুবকের আকর্ষণীয় কণ্ঠ (MadhurNeural)": "hi-IN-MadhurNeural"
+    }
+
+selected_voice_name = st.selectbox("ভয়েস সিলেক্ট করুন:", list(voice_options.keys()))
+selected_voice = voice_options[selected_voice_name]
 
 # একাধিক ছবি আপলোড অপশন
 uploaded_images = st.file_uploader(
@@ -86,7 +104,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 if not translated_text:
                     translated_text = user_story
                 
-                # ২. gTTS দিয়ে অডিও তৈরি
+                # ২. Edge-TTS দিয়ে একদম ন্যাচারাল মেল ভয়েস তৈরি (লুপ ফিক্সড সহ)
                 audio_path = os.path.join("temp_files", "voice.mp3")
                 if os.path.exists(audio_path):
                     try:
@@ -95,24 +113,34 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                         pass
                 
                 success_audio = False
+                last_error = None
+                
                 for attempt in range(3):
                     try:
-                        tts = gTTS(text=translated_text, lang=selected_lang_code, slow=False)
-                        tts.save(audio_path)
+                        async def generate_audio():
+                            communicate = edge_tts.Communicate(translated_text, selected_voice)
+                            await communicate.save(audio_path)
+
+                        # নতুন ইভেন্ট লুপ তৈরি করে অ্যাসিনক্রোনাস কাজ সঠিকভাবে সম্পন্ন করা
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(generate_audio())
+                        loop.close()
                         
                         if os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000:
                             success_audio = True
                             break
-                    except Exception:
+                    except Exception as ex:
+                        last_error = ex
                         time.sleep(2)
                 
                 if not success_audio:
-                    raise Exception("অডিও তৈরি করতে সমস্যা হয়েছে। দয়া করে ইন্টারনেট কানেকশন চেক করুন।")
+                    raise Exception(f"অডিও তৈরি করতে সমস্যা হয়েছে: {last_error}")
                 
                 audio_clip = AudioFileClip(audio_path)
                 total_duration = audio_clip.duration
                 
-                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (ফিক্সড সাইজসহ)
+                # ৩. থাম্বনেইল এবং একাধিক ছবির জন্য ক্লিপ তৈরি (ফিক্সড এইচডি সাইজসহ)
                 image_clips = []
                 
                 thumbnail_duration = 1.5  
@@ -155,7 +183,7 @@ if st.button("🚀 ভিডিও তৈরি করুন"):
                 audio_clip.close()
                 video_clip.close()
                 
-                st.success("🎉 এবার ছবি আর ফাটবে না! একদম পরিষ্কার ভিডিও তৈরি হয়েছে!")
+                st.success("🎉 যুবকের ন্যাচারাল মেল ভয়েস এবং পরিষ্কার এইচডি ছবিসহ ভিডিও সফলভাবে তৈরি হয়েছে!")
                 st.video(output_video_path)
                 
                 with open(output_video_path, "rb") as file:
